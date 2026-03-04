@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: leak-sim-config
+  # namespace: default   # Uncomment and set if using a specific namespace
+data:
+  leak_sim.py: |-
+    #!/usr/bin/env python3
+    import os
+    import time
+    import signal
+
+    # Simulate leak: Open files without closing. Ramp up to exhaustion.
+    fds = []
+    leak_rate = 1  # Start slow, increase every 60s
+    def signal_handler(sig, frame):
+        print(f"Caught signal {sig}. Open FDs: {len(fds)}")
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    print("Starting FD leak simulation...")
+    while True:
+        for _ in range(leak_rate):
+            # Open a temp file (FD) without closing
+            fd = os.open('/tmp/leak_fd.txt', os.O_CREAT | os.O_WRONLY)
+            fds.append(fd)  # Hold reference to leak
+            print(f"Opened FD {fd}. Total open: {len(fds)}")
+        
+        time.sleep(1)
+        if len(fds) % 60 == 0:  # Ramp up every ~60 FDs
+            leak_rate += 1
+            print(f"Ramping leak rate to {leak_rate} FDs/sec")
+  
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fd-leak-sim
+  # namespace: default   # Uncomment if needed
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fd-leak-sim
+  template:
+    metadata:
+      labels:
+        app: fd-leak-sim
+    spec:
+      nodeName: ip-172-17-79-121.ap-south-1.compute.internal
+      containers:
+      - name: leaker
+        image: python:3.9-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq && \
+          apt-get install -y -qq procps && \
+          python /app/leak_sim.py
+        volumeMounts:
+        - name: script
+          mountPath: /app
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+        # Optional: Lower ulimit for faster demo (default ~1024 is fine)
+        # securityContext:
+        #   capabilities: {}
+      volumes:
+      - name: script
+        configMap:
+          name: leak-sim-config
+          defaultMode: 0755   # Make script executable
+      terminationGracePeriodSeconds: 30
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: fd-leak-sim-svc
+spec:
+  selector:
+    app: fd-leak-sim
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80   # Not really used, but placeholder
+  type: ClusterIP

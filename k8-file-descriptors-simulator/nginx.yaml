@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-stress
+  labels:
+    app: nginx-stress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-stress
+  template:
+    metadata:
+      labels:
+        app: nginx-stress
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update && \
+            apt-get install -y stress-ng procps && \
+            echo "stress-ng installed" && \
+            nginx -g "daemon off;"
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-stress-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx-stress
+  ports:
+  - port: 80
+    targetPort: 80
