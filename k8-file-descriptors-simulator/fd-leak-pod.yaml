@@ -48,7 +48,7 @@ spec:
       labels:
         app: fd-leak-sim
     spec:
-      nodeName: ip-172-17-79-121.ap-south-1.compute.internal
+      nodeName: test
       containers:
       - name: leaker
         image: python:3.9-slim
