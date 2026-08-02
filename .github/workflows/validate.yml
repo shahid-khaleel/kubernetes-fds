@@ -1,0 +1,41 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    name: Lint & validate manifests / dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint Kubernetes YAML manifests
+        run: yamllint -c .yamllint.yml k8-file-descriptors-simulator/
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+          kubeconform -v
+
+      - name: Validate Kubernetes manifests (kubeconform)
+        run: |
+          kubeconform -strict -summary -kubernetes-version 1.30.0 \
+            k8-file-descriptors-simulator/fd-leak-pod.yaml \
+            k8-file-descriptors-simulator/nginx.yaml
+
+      - name: Validate Grafana dashboard JSON
+        run: |
+          jq . "EKS Cluster –  2026 MARCH 04-1772642044293.json" > /dev/null
+          echo "Dashboard JSON is valid."

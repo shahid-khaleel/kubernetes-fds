@@ -1,5 +1,6 @@
 # FD Leak Simulator + EKS Observability Dashboard
 
+[![Validate](https://github.com/shahid-khaleel/app/actions/workflows/validate.yml/badge.svg)](https://github.com/shahid-khaleel/app/actions/workflows/validate.yml)
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?logo=kubernetes&logoColor=white)
 ![Grafana](https://img.shields.io/badge/Grafana-F46800?logo=grafana&logoColor=white)
 ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?logo=prometheus&logoColor=white)
@@ -18,7 +19,7 @@ It contains two things:
 
 **Why this is useful:** FD leaks are a common, silent production failure — unlike CPU or memory pressure, they rarely show up until the process suddenly can't open a socket or file and the leak has already been present for a long time. This repo gives engineers a safe, reproducible way to trigger that failure mode in a real cluster and see exactly what it looks like on both the container level (`container_file_descriptors`) and the node level (`node_filefd_allocated`) in Grafana, before ever seeing it happen for real in production.
 
-This is a **proof-of-concept / learning artifact**, not a packaged tool — there is no automation wiring the pod's metrics to the dashboard (no bundled Prometheus/exporter install, no CI, no Helm chart). See [Status & Roadmap](#status--roadmap).
+This is a **proof-of-concept / learning artifact**, not a packaged tool — there is no automation wiring the pod's metrics to the dashboard (no bundled Prometheus/exporter install, no Helm chart). A CI workflow lints and schema-validates the static files (see [CI](#ci)), but there's no deployment automation or cluster testing. See [Status & Roadmap](#status--roadmap).
 
 ## Architecture / Flow
 
@@ -48,6 +49,14 @@ The manifests do **not** wire up Prometheus/Grafana themselves — the diagram s
 | `k8-file-descriptors-simulator/` | Kubernetes manifests for the FD-leak proof-of-concept. See its own [README](k8-file-descriptors-simulator/README.md). |
 | `k8-file-descriptors-simulator/fd-leak-pod.yaml` | ConfigMap (leak script) + Deployment (`fd-leak-sim`) + Service that runs the FD-leaking Python container. |
 | `k8-file-descriptors-simulator/nginx.yaml` | Standalone nginx + `stress-ng` Deployment and Service, usable as an optional co-located stress/noisy-neighbor workload. |
+
+## CI
+
+A lightweight, credential-free GitHub Actions workflow (`.github/workflows/validate.yml`) runs on every `push` and `pull_request`. It does not touch a real cluster — it's static validation only:
+
+- **YAML lint** — `yamllint` (with a relaxed repo-local `.yamllint.yml`) over `k8-file-descriptors-simulator/*.yaml` to catch syntax errors, duplicate keys, and structural issues.
+- **Kubernetes schema validation** — `kubeconform` validates `fd-leak-pod.yaml` and `nginx.yaml` against the upstream Kubernetes 1.30 schemas, with no cluster or `kubectl` context required.
+- **Dashboard JSON validity** — `jq` parses `EKS Cluster –  2026 MARCH 04-1772642044293.json` to confirm the exported Grafana dashboard is well-formed JSON.
 
 ## How to Reproduce
 
@@ -138,6 +147,7 @@ The dashboard does not include `node_filefd_maximum` or a threshold/alert panel,
 - [x] Working FD-leak Kubernetes manifest with resource limits
 - [x] Companion nginx/stress-ng manifest for adjacent load
 - [x] Exported Grafana dashboard with node- and container-level FD panels plus general cluster health panels
+- [x] CI validation (`yamllint` manifest linting, `kubeconform` schema check, dashboard JSON validity check)
 
 **Gaps / not yet done:**
 - [ ] Prometheus/Alertmanager alert rules for FD exhaustion (dashboard has visualization only, no alerting)
@@ -145,7 +155,6 @@ The dashboard does not include `node_filefd_maximum` or a threshold/alert panel,
 - [ ] Fix hardcoded `nodeName: test`
 - [ ] `securityContext` hardening on both containers
 - [ ] Dashboard-as-code (Grafonnet/Terraform) instead of a manual JSON export
-- [ ] CI validation (e.g. `kubeval`/`kubeconform` manifest linting, JSON schema check on the dashboard)
 - [ ] License file
 
 ## Disclaimer
